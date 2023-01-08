@@ -3,8 +3,8 @@
 //
 
 #include <pthread.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 typedef struct Car {
     int id;
@@ -20,8 +20,12 @@ typedef struct Car {
 int findNumOfCarsCanProducedPerDay(const int limits[], int size);
 void initializeCars(Car cars[], int size);
 void printCars(Car cars[], int size);
+void* aTypeWorker();
+void* bTypeWorker();
+void* cTypeWorker();
+void* dTypeWorker();
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
     // Open the input file
     FILE* input_file = fopen(argv[1], "r");
 
@@ -58,6 +62,29 @@ int main(int argc, char *argv[]) {
     // Close the input file
     fclose(input_file);
 
+    for (int i = 0; i < aTypeNum; i++) {
+        pthread_t thread_id;
+        pthread_create(&thread_id, NULL, &aTypeWorker, &i);
+    }
+
+    for (int i = 0; i < bTypeNum; i++)
+    {
+        pthread_t thread_id;
+        pthread_create(&thread_id, NULL, &bTypeWorker, &i);
+    }
+
+    for (int i = 0; i < cTypeNum; i++)
+    {
+        pthread_t thread_id;
+        pthread_create(&thread_id, NULL, &cTypeWorker, &i);
+    }
+
+    for (int i = 0; i < dTypeNum; i++)
+    {
+        pthread_t thread_id;
+        pthread_create(&thread_id, NULL, &dTypeWorker, &i);
+    }
+
     return 0;
 }
 
@@ -89,4 +116,19 @@ void printCars(Car cars[], int size) {
     for (int i = 0; i < size; i++) {
         printf("Car %d: chassis: %d, tires: %d, seats: %d, engines: %d, tops: %d, painting: %d\n", cars[i].id, cars[i].chassis, cars[i].tires, cars[i].seats, cars[i].engines, cars[i].tops, cars[i].painting);
     }
+}
+
+void* aTypeWorker(void* arg) {
+    printf("I am technician A-%d!\n", *(int*)arg);
+}
+
+void* bTypeWorker(void* arg) {
+    printf("I am technician B-%d!\n", *(int*)arg);
+}
+void* cTypeWorker(void* arg) {
+    printf("I am technician C-%d!\n", *(int*)arg);
+}
+
+void* dTypeWorker(void* arg) {
+    printf("I am technician D-%d!\n", *(int*)arg);
 }
