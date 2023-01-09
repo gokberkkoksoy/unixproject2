@@ -82,19 +82,52 @@ int main(int argc, char *argv[]) {
     pthread_t dType[dTypeNum];
 
     // initialize mutexes
-    initializeThreads(aType, (void *) aTypeAction, (void *) head, aTypeNum);
-    initializeThreads(bType, (void *) bTypeAction, (void *) head, bTypeNum);
-    initializeThreads(cType, (void *) cTypeAction, (void *) head, cTypeNum);
-    initializeThreads(dType, (void *) dTypeAction, (void *) head, dTypeNum);
+    //initializeThreads(aType, (void *) aTypeAction, (void *) head, aTypeNum);
+    //initializeThreads(bType, (void *) bTypeAction, (void *) head, bTypeNum);
+    //initializeThreads(cType, (void *) cTypeAction, (void *) head, cTypeNum);
+    //initializeThreads(dType, (void *) dTypeAction, (void *) head, dTypeNum);
 
     // wait for other 3 types
+
+    pthread_barrier_init(&barrier, NULL, bTypeNum);
+
+   /* for(int i = 0; i < aTypeNum; i++) {
+        pthread_create(&aType[i], NULL, (void *) aTypeAction, (void *) head);
+        fprintf(stderr, "aType created\n");
+    } */
+
+     for(int i = 0; i < bTypeNum; i++) {
+        pthread_create(&bType[i], NULL, (void *) bTypeAction, (void *) head);
+        fprintf(stderr,"b type created\n");
+    }
+
+    /* for(int i = 0; i < cTypeNum; i++) {
+         pthread_create(&cType[i], NULL, (void *) cTypeAction, (void *) head);
+         fprintf(stderr,"c type created\n");
+     }
+
+     for(int i = 0; i < dTypeNum; i++) {
+         pthread_create(&dType[i], NULL, (void *) dTypeAction, (void *) head);
+         fprintf(stderr,"d type created\n");
+     } */
+
+     /*for(int i = 0; i < aTypeNum; i++) {
+         pthread_join(aType[i], NULL);
+     } */
 
     for(int j = 0; j < bTypeNum; j++) {
         pthread_join(bType[j], NULL);
     }
 
-    sleep(1);
-    printCars(head);
+   /* for(int k = 0; k < cTypeNum; k++) {
+        pthread_join(cType[k], NULL);
+    }
+
+    for(int l = 0; l < dTypeNum; l++) {
+        pthread_join(dType[l], NULL);
+    } */
+
+    // printCars(head);
 
     // Close the input file
     fclose(input_file);
@@ -156,6 +189,7 @@ void setChassis(Car *car) {
 void initializeThreads(pthread_t threads[], void *startRoutine, void *arg, int size) {
     for(int i = 0; i < size; i++) {
         pthread_create(&threads[i], NULL, startRoutine, arg);
+        fprintf(stderr, "b type created\n");
     }
 }
 
@@ -164,6 +198,7 @@ void aTypeAction(Car *car) {
 }
 
 void bTypeAction(Car *car) {
+    pthread_barrier_wait(&barrier);
     while(sem_trywait(&sem) == 0) {
         pthread_mutex_lock(&carMutex);
         addNewCarWithChassis(car);
@@ -177,7 +212,4 @@ void cTypeAction(Car *car) {
 }
 void dTypeAction(Car *car) {
     pthread_exit(NULL);
-}
-
-
 }
