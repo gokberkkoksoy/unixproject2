@@ -5,7 +5,11 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <semaphore.h>
+#include <pthread.h>
+#include <unistd.h>
 
+// a linked list node called typedef Car with int id, int chassis, int tires, int seats, int engines, int tops, int painting, mutex
 typedef struct Car {
     int id;
     int chassis;
@@ -14,12 +18,28 @@ typedef struct Car {
     int engines;
     int tops;
     int painting;
+    pthread_mutex_t mutex;
+    struct Car *next;
 } Car;
 
 #define NUM_TECHNICIANS 6
 int findNumOfCarsCanProducedPerDay(const int limits[], int size);
-void initializeCars(Car cars[], int size);
-void printCars(Car cars[], int size);
+void initializeThreads(pthread_t threads[], void *startRoutine, void *arg, int size);
+void initializeCar(Car *car, int id);
+void printCars(Car *car);
+void aTypeAction(Car *car);
+void bTypeAction(Car *car);
+void cTypeAction(Car *car);
+void dTypeAction(Car *car);
+void addNewCarWithChassis(Car *car);
+void setChassis(Car *car);
+sem_t sem;
+int chassisLimit, paintingLimit, tireLimit, seatLimit, engineLimit, topLimit;
+pthread_mutex_t carMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_barrier_t barrier;
+
+
+Car *head = NULL;
 
 int main(int argc, char *argv[]) {
     // Open the input file
@@ -27,7 +47,7 @@ int main(int argc, char *argv[]) {
 
     // Read the first line of the input file
     int aTypeNum, bTypeNum, cTypeNum, dTypeNum, numberOfDays = 0;
-    int chassisLimit, paintingLimit, tireLimit, seatLimit, engineLimit, topLimit;
+
     fscanf(input_file, "%d %d %d %d %d", &aTypeNum, &bTypeNum, &cTypeNum, &dTypeNum, &numberOfDays);
 
     printf("%d %d %d %d %d\n", aTypeNum, bTypeNum, cTypeNum, dTypeNum, numberOfDays);
@@ -49,15 +69,35 @@ int main(int argc, char *argv[]) {
     printf("Work limit for engine operations: %d\n", engineLimit);
     printf("Work limit for top operations: %d\n", topLimit);
 
+    // allocate memory for the head node
+    head = (Car *) malloc(sizeof (Car));
+    initializeCar(head, 0);
     int maxNumOfCarsCanProduced = findNumOfCarsCanProducedPerDay(work_limits, NUM_TECHNICIANS);
-    Car cars[maxNumOfCarsCanProduced];
-    initializeCars(cars, maxNumOfCarsCanProduced);
+    sem_init(&sem, 0, maxNumOfCarsCanProduced);
 
-    printCars(cars, maxNumOfCarsCanProduced);
+    // create thread a called aType, bType, cType, dType
+    pthread_t aType[aTypeNum];
+    pthread_t bType[bTypeNum];
+    pthread_t cType[cTypeNum];
+    pthread_t dType[dTypeNum];
+
+    // initialize mutexes
+    initializeThreads(aType, (void *) aTypeAction, (void *) head, aTypeNum);
+    initializeThreads(bType, (void *) bTypeAction, (void *) head, bTypeNum);
+    initializeThreads(cType, (void *) cTypeAction, (void *) head, cTypeNum);
+    initializeThreads(dType, (void *) dTypeAction, (void *) head, dTypeNum);
+
+    // wait for other 3 types
+
+    for(int j = 0; j < bTypeNum; j++) {
+        pthread_join(bType[j], NULL);
+    }
+
+    sleep(1);
+    printCars(head);
 
     // Close the input file
     fclose(input_file);
-
     return 0;
 }
 
@@ -72,21 +112,72 @@ int findNumOfCarsCanProducedPerDay(const int limits[], int size) {
     return min;
 }
 
-void initializeCars(Car cars[], int size) {
-    for (int i = 0; i < size; i++) {
-        cars[i].id = i;
-        cars[i].chassis = 0;
-        cars[i].tires = 0;
-        cars[i].seats = 0;
-        cars[i].engines = 0;
-        cars[i].tops = 0;
-        cars[i].painting = 0;
+void initializeCar(Car *car, int id) {
+    car->id = id;
+    car->chassis = 0;
+    car->tires = 0;
+    car->seats = 0;
+    car->engines = 0;
+    car->tops = 0;
+    car->painting = 0;
+    pthread_mutex_init(&car->mutex, NULL);
+    car->next = NULL;
+}
+
+// traverse the linked list and print all nodes
+void printCars(Car *car) {
+    pthread_mutex_lock(&carMutex);
+    Car *current = car;
+    while (current != NULL) {
+        printf("Car id: %d, car chassis: %d, tire: %d, seat: %d, engine: %d, topCover: %d, paint: %d\n", current->id, current->chassis, current->tires, current->seats, current->engines, current->tops, current->painting);
+        current = current->next;
+    }
+    pthread_mutex_unlock(&carMutex);
+}
+
+// add and initialize new node to the end of car linked list
+void addNewCarWithChassis(Car *car) {
+    while (car->next != NULL) {
+        car = car->next;
+    }
+    car->next = (Car *) malloc(sizeof (Car));
+    initializeCar(car->next, car->id + 1);
+    fprintf(stderr, "car added with id: %d, created by thread: %lu\n", car->next->id, pthread_self());
+    setChassis(car->next);
+}
+
+// set chassis to 1 of a car
+void setChassis(Car *car) {
+    pthread_mutex_lock(&car->mutex);
+    car->chassis = 1;
+    pthread_mutex_unlock(&car->mutex);
+}
+
+void initializeThreads(pthread_t threads[], void *startRoutine, void *arg, int size) {
+    for(int i = 0; i < size; i++) {
+        pthread_create(&threads[i], NULL, startRoutine, arg);
     }
 }
 
-// a function that lists all attributes of the car struct inside the array
-void printCars(Car cars[], int size) {
-    for (int i = 0; i < size; i++) {
-        printf("Car %d: chassis: %d, tires: %d, seats: %d, engines: %d, tops: %d, painting: %d\n", cars[i].id, cars[i].chassis, cars[i].tires, cars[i].seats, cars[i].engines, cars[i].tops, cars[i].painting);
+void aTypeAction(Car *car) {
+    pthread_exit(NULL);
+}
+
+void bTypeAction(Car *car) {
+    while(sem_trywait(&sem) == 0) {
+        pthread_mutex_lock(&carMutex);
+        addNewCarWithChassis(car);
+        pthread_mutex_unlock(&carMutex);
     }
+    pthread_exit(NULL);
+}
+
+void cTypeAction(Car *car) {
+    pthread_exit(NULL);
+}
+void dTypeAction(Car *car) {
+    pthread_exit(NULL);
+}
+
+
 }
