@@ -193,6 +193,8 @@ void setChassis(Car *car) {
 
 // adds tires and painting
 void aTypeAction(Car *car) {
+    int tireOpCount = 0;
+    int paintOpCount = 0;
     do {
         int currentDay = day;
         pthread_barrier_wait(&barrier);
@@ -205,6 +207,7 @@ void aTypeAction(Car *car) {
                 if (pthread_mutex_trylock(&car->mutex) == 0) {
                     if (car->tires == 0 && car->chassis == 1) {
                         car->tires = 1;
+                        tireOpCount++;
                         pthread_mutex_lock(&logMutex);
                         fprintf(output_file, "Type A - %lu\t%d\ttires\t%d\n", pthread_self(), car->id, currentDay);
                         pthread_mutex_unlock(&logMutex);
@@ -228,6 +231,7 @@ void aTypeAction(Car *car) {
                         if (car->chassis == 1 && car->engines == 1 & car->tires == 1 && car->seats == 1 && car->tops == 1 &&
                             car->painting == 0) {
                             car->painting = 1;
+                            paintOpCount++;
                             pthread_mutex_lock(&logMutex);
                             fprintf(output_file, "Type A - %lu\t%d\tpainting\t%d\n", pthread_self(), car->id, currentDay);
                             pthread_mutex_unlock(&logMutex);
@@ -255,17 +259,27 @@ void aTypeAction(Car *car) {
         pthread_mutex_unlock(&dayMutex);
     } while (day <= numberOfDays);
 
+
+    pthread_barrier_wait(&barrier);
+    pthread_mutex_lock(&logMutex);
+    fprintf(output_file, "Type A - %lu did a total of %d tire operations\n", pthread_self(), tireOpCount);
+    fprintf(output_file, "Type A - %lu did a total of %d painting operations\n", pthread_self(), paintOpCount);
+    pthread_mutex_unlock(&logMutex);
+
     pthread_exit(NULL);
 }
 
 // adds chassis
 void bTypeAction(Car *car) {
+    int operationCount = 0;
+
     do {
         int currentDay = day;
         pthread_barrier_wait(&barrier);
         while (sem_trywait(&sem) == 0) {
             pthread_mutex_lock(&carMutex);
             addNewCarWithChassis(car, currentDay);
+            operationCount++;
             sem_post(&chassisSem);
             pthread_mutex_unlock(&carMutex);
         }
@@ -282,11 +296,18 @@ void bTypeAction(Car *car) {
 
         pthread_mutex_unlock(&dayMutex);
     } while (day <= numberOfDays);
+
+    pthread_barrier_wait(&barrier);
+    pthread_mutex_lock(&logMutex);
+    fprintf(output_file, "Type B - %lu did a total of %d chassis operations\n", pthread_self(), operationCount);
+    pthread_mutex_unlock(&logMutex);
     pthread_exit(NULL);
 }
 
 // adds seats
 void cTypeAction(Car *car) {
+    int seatOpCount = 0;
+
     do {
         int currentDay = day;
         pthread_barrier_wait(&barrier);
@@ -299,6 +320,7 @@ void cTypeAction(Car *car) {
                 if (pthread_mutex_trylock(&car->mutex) == 0) {
                     if (car->seats == 0 && car->chassis == 1) {
                         car->seats = 1;
+                        seatOpCount++;
                         if (car->engines == 1 && car->tires == 1) {
                             sem_post(&topCoverSem);
                         } else {
@@ -331,10 +353,17 @@ void cTypeAction(Car *car) {
 
         pthread_mutex_unlock(&dayMutex);
     } while (day <= numberOfDays);
+
+    pthread_barrier_wait(&barrier);
+    pthread_mutex_lock(&logMutex);
+    fprintf(output_file, "Type C - %lu did a total of %d chassis operations\n", pthread_self(), seatOpCount);
+    pthread_mutex_unlock(&logMutex);
     pthread_exit(NULL);
 }
 // adds engine
 void dTypeAction(Car *car) {
+    int engineOpCount = 0;
+    int topCoverOpCount = 0;
     do {
         int currentDay = day;
         pthread_barrier_wait(&barrier);
@@ -347,6 +376,7 @@ void dTypeAction(Car *car) {
                 if (pthread_mutex_trylock(&car->mutex) == 0) {
                     if (car->engines == 0 && car->chassis == 1) {
                         car->engines = 1;
+                        engineOpCount++;
                         pthread_mutex_lock(&logMutex);
                         fprintf(output_file, "Type D - %lu\t%d\tengines\t%d\n", pthread_self(), car->id, currentDay);
                         pthread_mutex_unlock(&logMutex);
@@ -369,6 +399,7 @@ void dTypeAction(Car *car) {
                     if (pthread_mutex_trylock(&car->mutex) == 0) {
                         if (car->chassis == 1 && car->seats == 1 && car->tires == 1 && car->engines == 1 && car->tops == 0) {
                             car->tops = 1;
+                            topCoverOpCount++;
                             pthread_mutex_lock(&logMutex);
                             fprintf(output_file, "Type D - %lu\t%d\ttops\t%d\n", pthread_self(), car->id, currentDay);
                             pthread_mutex_unlock(&logMutex);
@@ -396,6 +427,12 @@ void dTypeAction(Car *car) {
 
         pthread_mutex_unlock(&dayMutex);
     } while (day <= numberOfDays);
+
+    pthread_barrier_wait(&barrier);
+    pthread_mutex_lock(&logMutex);
+    fprintf(output_file, "Type D - %lu did a total of %d engine operations\n", pthread_self(), engineOpCount);
+    fprintf(output_file, "Type D - %lu did a total of %d top cover operations\n", pthread_self(), topCoverOpCount);
+    pthread_mutex_unlock(&logMutex);
     pthread_exit(NULL);
 }
 
