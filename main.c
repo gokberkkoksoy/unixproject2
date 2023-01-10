@@ -30,6 +30,7 @@ void cTypeAction(Car *car);
 void dTypeAction(Car *car);
 void addNewCarWithChassis(Car *car, int currentday);
 void setChassis(Car *car);
+int findCarsProduced(Car *car);
 int day = 1;
 int numberOfDays = 0;
 sem_t sem, chassisSem, topCoverSem, paintSem;
@@ -52,6 +53,7 @@ int main(int argc, char *argv[]) {
     int aTypeNum, bTypeNum, cTypeNum, dTypeNum = 0;
 
     fscanf(input_file, "%d %d %d %d %d", &aTypeNum, &bTypeNum, &cTypeNum, &dTypeNum, &numberOfDays);
+    int carsProducedEachDay[numberOfDays];
 
     // Read the second line of the input file
     int work_limits[NUM_TECHNICIANS];
@@ -95,6 +97,7 @@ int main(int argc, char *argv[]) {
         pthread_barrier_wait(&daybarrier);
         pthread_mutex_lock(&dayMutex);
         sem_init(&sem, 0, maxNumOfCarsCanProduced);
+        carsProducedEachDay[day - 1] = findCarsProduced(head);
         day++;
         pthread_cond_broadcast(&daycond);
         pthread_mutex_unlock(&dayMutex);
@@ -370,4 +373,16 @@ void dTypeAction(Car *car) {
         pthread_mutex_unlock(&dayMutex);
     } while (day <= numberOfDays);
     pthread_exit(NULL);
+}
+
+// traverse the linked list, if chassis == 1, tires == 1, engine == 1, seat == 1, tops == 1, painting == 1 increment the counter
+int findCarsProduced(Car *car) {
+    int result = 0;
+    while(car != NULL) {
+        if (car->chassis == 1 && car->tires == 1 && car->engines == 1 && car->seats == 1 && car->tops == 1 && car->painting == 1) {
+            result++;
+        }
+        car = car->next;
+    }
+    return result;
 }
