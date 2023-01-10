@@ -119,7 +119,16 @@ int main(int argc, char *argv[]) {
         pthread_join(dType[i], NULL);
     }
 
+    
+    pthread_mutex_lock(&logMutex);
+
+    for(int x=0; x<numberOfDays; x++) {
+        fprintf(output_file, "%d cars produced at day: %d\n", carsProducedEachDay[x], x+1);
+    }
+    
+    pthread_mutex_unlock(&logMutex);
     // Close the input file
+
     fclose(input_file);
     return 0;
 }
