@@ -1,2 +1,3 @@
-# Ignore compiled binary
+# Ignore outputs
 main
+output.txt
