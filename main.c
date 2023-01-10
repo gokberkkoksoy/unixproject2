@@ -206,7 +206,7 @@ void aTypeAction(Car *car) {
     sem_getvalue(&sem, &semSemvalue);
     sem_getvalue(&chassisSem, &chassisSemvalue);
     while (semSemvalue != 0 || chassisSemvalue != 0) {
-        if (sem_trywait(&chassisSem) == 0) {
+        sem_wait(&chassisSem);
             while (car->next != NULL) {
                 if (pthread_mutex_trylock(&car->mutex) == 0) {
                     if (car->tires == 0 && car->chassis == 1) {
@@ -225,7 +225,6 @@ void aTypeAction(Car *car) {
                 car = car->next;
             }
             car = head->next;
-        }
 
         if (sem_trywait(&paintSem) == 0) {
             while (car->next != NULL) {
@@ -241,7 +240,6 @@ void aTypeAction(Car *car) {
             }
             car = head->next;
         }
-        sleep(1);
         sem_getvalue(&sem, &semSemvalue);
         sem_getvalue(&chassisSem, &chassisSemvalue);
     }
@@ -299,7 +297,7 @@ void dTypeAction(Car *car) {
     sem_getvalue(&sem, &semSemvalue);
     sem_getvalue(&chassisSem, &chassisSemvalue);
     while (semSemvalue != 0 || chassisSemvalue != 0) {
-        if (sem_trywait(&chassisSem) == 0) {
+        sem_wait(&chassisSem);
             while (car->next != NULL) {
                 if (pthread_mutex_trylock(&car->mutex) == 0) {
                     if (car->engines == 0 && car->chassis == 1) {
@@ -319,7 +317,6 @@ void dTypeAction(Car *car) {
                 car = car->next;
             }
             car = head->next;
-        }
 
         if (sem_trywait(&topCoverSem) == 0) {
             while (car->next != NULL) {
@@ -335,7 +332,6 @@ void dTypeAction(Car *car) {
             car = head->next;
             sem_post(&paintSem);
         }
-        sleep(1);
         sem_getvalue(&sem, &semSemvalue);
         sem_getvalue(&chassisSem, &chassisSemvalue);
     }
