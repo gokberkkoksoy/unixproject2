@@ -23,9 +23,7 @@ typedef struct Car {
 
 #define NUM_TECHNICIANS 6
 int findNumOfCarsCanProducedPerDay(const int limits[], int size);
-void initializeThreads(pthread_t threads[], void *startRoutine, void *arg, int size);
 void initializeCar(Car *car, int id);
-void printCars(Car *car);
 void aTypeAction(Car *car);
 void bTypeAction(Car *car);
 void cTypeAction(Car *car);
@@ -33,40 +31,27 @@ void dTypeAction(Car *car);
 void addNewCarWithChassis(Car *car);
 void setChassis(Car *car);
 sem_t sem, chassisSem, topCoverSem, paintSem;
-int chassisLimit, paintingLimit, tireLimit, seatLimit, engineLimit, topLimit;
+pthread_mutex_t logMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t carMutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t chassisCond = PTHREAD_COND_INITIALIZER;
 pthread_barrier_t barrier;
 
 Car *head = NULL;
+FILE *input_file;
+FILE *output_file;
 
 int main(int argc, char *argv[]) {
     // Open the input file
-    FILE *input_file = fopen(argv[1], "r");
+    input_file = fopen(argv[1], "r");
+    output_file = fopen("output.txt", "w");
 
     // Read the first line of the input file
     int aTypeNum, bTypeNum, cTypeNum, dTypeNum, numberOfDays = 0;
 
     fscanf(input_file, "%d %d %d %d %d", &aTypeNum, &bTypeNum, &cTypeNum, &dTypeNum, &numberOfDays);
 
-    printf("%d %d %d %d %d\n", aTypeNum, bTypeNum, cTypeNum, dTypeNum, numberOfDays);
-
     // Read the second line of the input file
     int work_limits[NUM_TECHNICIANS];
     fscanf(input_file, "%d %d %d %d %d %d", &work_limits[0], &work_limits[1], &work_limits[2], &work_limits[3], &work_limits[4], &work_limits[5]);
-    chassisLimit = work_limits[0];
-    paintingLimit = work_limits[1];
-    tireLimit = work_limits[2];
-    seatLimit = work_limits[3];
-    engineLimit = work_limits[4];
-    topLimit = work_limits[5];
-
-    printf("Work limit for chassis operations: %d\n", chassisLimit);
-    printf("Work limit for painting operations: %d\n", paintingLimit);
-    printf("Work limit for tire operations: %d\n", tireLimit);
-    printf("Work limit for seat operations: %d\n", seatLimit);
-    printf("Work limit for engine operations: %d\n", engineLimit);
-    printf("Work limit for top operations: %d\n", topLimit);
 
     // allocate memory for the head node
     head = (Car *)malloc(sizeof(Car));
@@ -83,34 +68,22 @@ int main(int argc, char *argv[]) {
     pthread_t cType[cTypeNum];
     pthread_t dType[dTypeNum];
 
-    // initialize mutexes
-    // initializeThreads(aType, (void *) aTypeAction, (void *) head, aTypeNum);
-    // initializeThreads(bType, (void *) bTypeAction, (void *) head, bTypeNum);
-    // initializeThreads(cType, (void *) cTypeAction, (void *) head, cTypeNum);
-    // initializeThreads(dType, (void *) dTypeAction, (void *) head, dTypeNum);
-
-    // wait for other 3 types
-
     pthread_barrier_init(&barrier, NULL, aTypeNum + bTypeNum + cTypeNum + dTypeNum);
 
     for (int i = 0; i < aTypeNum; i++) {
         pthread_create(&aType[i], NULL, (void *)aTypeAction, (void *)head);
-        fprintf(stderr, "a Type created\n");
     }
 
     for (int i = 0; i < bTypeNum; i++) {
         pthread_create(&bType[i], NULL, (void *)bTypeAction, (void *)head);
-        fprintf(stderr, "b type created\n");
     }
 
     for (int i = 0; i < cTypeNum; i++) {
         pthread_create(&cType[i], NULL, (void *)cTypeAction, (void *)head);
-        fprintf(stderr, "c type created\n");
     }
 
     for (int i = 0; i < dTypeNum; i++) {
         pthread_create(&dType[i], NULL, (void *)dTypeAction, (void *)head);
-        fprintf(stderr, "d type created\n");
     }
 
     for (int i = 0; i < aTypeNum; i++) {
@@ -128,8 +101,6 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < dTypeNum; i++) {
         pthread_join(dType[i], NULL);
     }
-
-    // printCars(head);
 
     // Close the input file
     fclose(input_file);
@@ -159,17 +130,6 @@ void initializeCar(Car *car, int id) {
     car->next = NULL;
 }
 
-// traverse the linked list and print all nodes
-void printCars(Car *car) {
-    pthread_mutex_lock(&carMutex);
-    Car *current = car;
-    while (current != NULL) {
-        printf("Car id: %d, car chassis: %d, tire: %d, seat: %d, engine: %d, topCover: %d, paint: %d\n", current->id, current->chassis, current->tires, current->seats, current->engines, current->tops, current->painting);
-        current = current->next;
-    }
-    pthread_mutex_unlock(&carMutex);
-}
-
 // add and initialize new node to the end of car linked list
 void addNewCarWithChassis(Car *car) {
     while (car->next != NULL) {
@@ -177,8 +137,10 @@ void addNewCarWithChassis(Car *car) {
     }
     car->next = (Car *)malloc(sizeof(Car));
     initializeCar(car->next, car->id + 1);
-    fprintf(stderr, "chassis added to car: %d, added by thread: %lu\n", car->next->id, pthread_self());
     setChassis(car->next);
+    pthread_mutex_lock(&logMutex);
+    fprintf(output_file, "Type B - %lu\t%d\tchassis\t%d\n", pthread_self(), car->next->id,1);
+    pthread_mutex_unlock(&logMutex);
 }
 
 // set chassis to 1 of a car
@@ -188,18 +150,7 @@ void setChassis(Car *car) {
     pthread_mutex_unlock(&car->mutex);
 }
 
-void setSeat(Car *car) {
-    car->seats = 1;
-}
-
-void initializeThreads(pthread_t threads[], void *startRoutine, void *arg, int size) {
-    for (int i = 0; i < size; i++) {
-        pthread_create(&threads[i], NULL, startRoutine, arg);
-        fprintf(stderr, "b type created\n");
-    }
-}
-
-// adds tires TODO: will add painting
+// adds tires and painting
 void aTypeAction(Car *car) {
     pthread_barrier_wait(&barrier);
     int semSemvalue, chassisSemvalue;
@@ -211,7 +162,9 @@ void aTypeAction(Car *car) {
                 if (pthread_mutex_trylock(&car->mutex) == 0) {
                     if (car->tires == 0 && car->chassis == 1) {
                         car->tires = 1;
-                        fprintf(stderr, "tires added to car: %d, added by thread: %lu\n", car->id, pthread_self());
+                        pthread_mutex_lock(&logMutex);
+                        fprintf(output_file, "Type A - %lu\t%d\ttires\t%d\n", pthread_self(), car->id, 1);
+                        pthread_mutex_unlock(&logMutex);
                         if (car->engines == 1 && car->seats == 1) {
                             sem_post(&topCoverSem);
                         } else {
@@ -232,7 +185,9 @@ void aTypeAction(Car *car) {
                     if (car->chassis == 1 && car->engines == 1 & car->tires == 1 && car->seats == 1 && car->tops == 1 &&
                         car->painting == 0) {
                         car->painting = 1;
-                        fprintf(stderr, "painting added to car: %d, added by thread: %lu\n", car->id, pthread_self());
+                        pthread_mutex_lock(&logMutex);
+                        fprintf(output_file, "Type A - %lu\t%d\tpainting\t%d\n", pthread_self(), car->id, 1);
+                        pthread_mutex_unlock(&logMutex);
                     }
                     pthread_mutex_unlock(&car->mutex);
                 }
@@ -275,7 +230,9 @@ void cTypeAction(Car *car) {
                     } else {
                         sem_post(&chassisSem);
                     }
-                    fprintf(stderr, "seat added to car: %d, added by thread: %lu\n", car->id, pthread_self());
+                    pthread_mutex_lock(&logMutex);
+                    fprintf(output_file, "Type C - %lu\t%d\tseats\t%d\n", pthread_self(), car->id, 1);
+                    pthread_mutex_unlock(&logMutex);
                     pthread_mutex_unlock(&car->mutex);
                     break;
                 }
@@ -302,10 +259,11 @@ void dTypeAction(Car *car) {
                 if (pthread_mutex_trylock(&car->mutex) == 0) {
                     if (car->engines == 0 && car->chassis == 1) {
                         car->engines = 1;
-                        fprintf(stderr, "engine added to car: %d, added by thread: %lu\n", car->id, pthread_self());
+                        pthread_mutex_lock(&logMutex);
+                        fprintf(output_file, "Type D - %lu\t%d\tengines\t%d\n", pthread_self(), car->id, 1);
+                        pthread_mutex_unlock(&logMutex);
                         if (car->tires == 1 && car->seats == 1) {
                             sem_post(&topCoverSem);
-                            // fprintf(stderr,"top cover can be added to car: %d\n", car->id);
                         } else {
                             sem_post(&chassisSem);
                         }
@@ -323,7 +281,9 @@ void dTypeAction(Car *car) {
                 if (pthread_mutex_trylock(&car->mutex) == 0) {
                     if (car->chassis == 1 && car->seats == 1 && car->tires == 1 && car->engines == 1 && car->tops == 0) {
                         car->tops = 1;
-                        fprintf(stderr, "top cover added to car: %d, added by thread: %lu\n", car->id, pthread_self());
+                        pthread_mutex_lock(&logMutex);
+                        fprintf(output_file, "Type D - %lu\t%d\ttops\t%d\n", pthread_self(), car->id, 1);
+                        pthread_mutex_unlock(&logMutex);
                     }
                     pthread_mutex_unlock(&car->mutex);
                 }
