@@ -96,8 +96,22 @@ int main(int argc, char *argv[]) {
     while (day < numberOfDays) {
         pthread_barrier_wait(&daybarrier);
         pthread_mutex_lock(&dayMutex);
-        sem_init(&sem, 0, maxNumOfCarsCanProduced);
         carsProducedEachDay[day - 1] = findCarsProduced(head);
+
+        Car *currentCar = head->next;
+        Car *tempToFree;
+
+        while (currentCar != NULL) {
+            tempToFree = currentCar;
+            currentCar = currentCar->next;
+            free(currentCar);
+        }
+        head->next = NULL;
+        sem_init(&sem, 0, maxNumOfCarsCanProduced);
+        sem_init(&chassisSem, 0, 0);
+        sem_init(&topCoverSem, 0, 0);
+        sem_init(&paintSem, 0, 0);
+
         day++;
         pthread_cond_broadcast(&daycond);
         pthread_mutex_unlock(&dayMutex);
@@ -119,13 +133,14 @@ int main(int argc, char *argv[]) {
         pthread_join(dType[i], NULL);
     }
 
-    
+    carsProducedEachDay[day - 1] = findCarsProduced(head);
+
     pthread_mutex_lock(&logMutex);
 
-    for(int x=0; x<numberOfDays; x++) {
-        fprintf(output_file, "%d cars produced at day: %d\n", carsProducedEachDay[x], x+1);
+    for (int x = 0; x < numberOfDays; x++) {
+        fprintf(output_file, "%d cars produced at day: %d\n", carsProducedEachDay[x], x + 1);
     }
-    
+
     pthread_mutex_unlock(&logMutex);
     // Close the input file
 
@@ -387,7 +402,7 @@ void dTypeAction(Car *car) {
 // traverse the linked list, if chassis == 1, tires == 1, engine == 1, seat == 1, tops == 1, painting == 1 increment the counter
 int findCarsProduced(Car *car) {
     int result = 0;
-    while(car != NULL) {
+    while (car != NULL) {
         if (car->chassis == 1 && car->tires == 1 && car->engines == 1 && car->seats == 1 && car->tops == 1 && car->painting == 1) {
             result++;
         }
