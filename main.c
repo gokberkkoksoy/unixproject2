@@ -3,15 +3,13 @@
 //
 
 #include <pthread.h>
-#include <stdlib.h>
-#include <stdio.h>
 #include <semaphore.h>
-#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 
 // a linked list node called typedef Car with int id, int chassis, int tires, int seats, int engines, int tops, int painting, mutex
-typedef struct Car
-{
+typedef struct Car {
     int id;
     int chassis;
     int tires;
@@ -76,8 +74,8 @@ int main(int argc, char *argv[]) {
     int maxNumOfCarsCanProduced = findNumOfCarsCanProducedPerDay(work_limits, NUM_TECHNICIANS);
     sem_init(&sem, 0, maxNumOfCarsCanProduced);
     sem_init(&chassisSem, 0, 0);
-    sem_init(&topCoverSem, 0,0);
-    sem_init(&paintSem, 0,0);
+    sem_init(&topCoverSem, 0, 0);
+    sem_init(&paintSem, 0, 0);
 
     // create thread a called aType, bType, cType, dType
     pthread_t aType[aTypeNum];
@@ -95,9 +93,9 @@ int main(int argc, char *argv[]) {
 
     pthread_barrier_init(&barrier, NULL, aTypeNum + bTypeNum + cTypeNum + dTypeNum);
 
-    for(int i = 0; i < aTypeNum; i++) {
-         pthread_create(&aType[i], NULL, (void *) aTypeAction, (void *) head);
-         fprintf(stderr, "a Type created\n");
+    for (int i = 0; i < aTypeNum; i++) {
+        pthread_create(&aType[i], NULL, (void *)aTypeAction, (void *)head);
+        fprintf(stderr, "a Type created\n");
     }
 
     for (int i = 0; i < bTypeNum; i++) {
@@ -110,13 +108,12 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "c type created\n");
     }
 
-
-    for(int i = 0; i < dTypeNum; i++) {
-        pthread_create(&dType[i], NULL, (void *) dTypeAction, (void *) head);
-        fprintf(stderr,"d type created\n");
+    for (int i = 0; i < dTypeNum; i++) {
+        pthread_create(&dType[i], NULL, (void *)dTypeAction, (void *)head);
+        fprintf(stderr, "d type created\n");
     }
 
-    for(int i = 0; i < aTypeNum; i++) {
+    for (int i = 0; i < aTypeNum; i++) {
         pthread_join(aType[i], NULL);
     }
 
@@ -124,12 +121,12 @@ int main(int argc, char *argv[]) {
         pthread_join(bType[j], NULL);
     }
 
-    for(int i = 0; i < cTypeNum; i++) {
-         pthread_join(cType[i], NULL);
+    for (int i = 0; i < cTypeNum; i++) {
+        pthread_join(cType[i], NULL);
     }
 
-    for(int i = 0; i < dTypeNum; i++) {
-         pthread_join(dType[i], NULL);
+    for (int i = 0; i < dTypeNum; i++) {
+        pthread_join(dType[i], NULL);
     }
 
     // printCars(head);
@@ -180,7 +177,7 @@ void addNewCarWithChassis(Car *car) {
     }
     car->next = (Car *)malloc(sizeof(Car));
     initializeCar(car->next, car->id + 1);
-    fprintf(stderr, "car added with id: %d, created by thread: %lu\n", car->next->id, pthread_self());
+    fprintf(stderr, "chassis added to car: %d, added by thread: %lu\n", car->next->id, pthread_self());
     setChassis(car->next);
 }
 
@@ -205,25 +202,32 @@ void initializeThreads(pthread_t threads[], void *startRoutine, void *arg, int s
 // adds tires TODO: will add painting
 void aTypeAction(Car *car) {
     pthread_barrier_wait(&barrier);
-    while(1) {
-        sem_wait(&chassisSem);
-        while(car->next != NULL) {
-            if(pthread_mutex_trylock(&carMutex) == 0) {
-                if(car->tires == 0 && car->chassis == 1) {
-                    car->tires = 1;
-                    if(car->engines == 1 && car->seats == 1) {
-                        sem_post(&topCoverSem);
+    int semSemvalue, chassisSemvalue;
+    sem_getvalue(&sem, &semSemvalue);
+    sem_getvalue(&chassisSem, &chassisSemvalue);
+    while (semSemvalue != 0 || chassisSemvalue != 0) {
+        if (sem_trywait(&chassisSem) == 0) {
+            while (car->next != NULL) {
+                if (pthread_mutex_trylock(&car->mutex) == 0) {
+                    if (car->tires == 0 && car->chassis == 1) {
+                        car->tires = 1;
+                        fprintf(stderr, "tires added to car: %d, added by thread: %lu\n", car->id, pthread_self());
+                        if (car->engines == 1 && car->seats == 1) {
+                            sem_post(&topCoverSem);
+                        } else {
+                            sem_post(&chassisSem);
+                        }
+                        pthread_mutex_unlock(&car->mutex);
+                        break;
                     }
-                    fprintf(stderr, "tires added to car: %d, added by thread: %lu\n", car->id, pthread_self());
+                    pthread_mutex_unlock(&car->mutex);
                 }
-                pthread_mutex_unlock(&carMutex);
+                car = car->next;
             }
-            car = car->next;
+            car = head->next;
         }
-        car = head;
-        sem_post(&chassisSem);
 
-        if(sem_trywait(&paintSem) == 0) {
+        if (sem_trywait(&paintSem) == 0) {
             while (car->next != NULL) {
                 if (pthread_mutex_trylock(&car->mutex) == 0) {
                     if (car->chassis == 1 && car->engines == 1 & car->tires == 1 && car->seats == 1 && car->tops == 1 &&
@@ -235,8 +239,11 @@ void aTypeAction(Car *car) {
                 }
                 car = car->next;
             }
-            car = head;
+            car = head->next;
         }
+        sleep(1);
+        sem_getvalue(&sem, &semSemvalue);
+        sem_getvalue(&chassisSem, &chassisSemvalue);
     }
     pthread_exit(NULL);
 }
@@ -256,27 +263,31 @@ void bTypeAction(Car *car) {
 // adds seats
 void cTypeAction(Car *car) {
     pthread_barrier_wait(&barrier);
-    while (1) /*TODO
-    check if you are able to add seats to more cars (chassis limit-seat limit)
-    
-*/
-    {
+    int semSemvalue, chassisSemvalue;
+    sem_getvalue(&sem, &semSemvalue);
+    sem_getvalue(&chassisSem, &chassisSemvalue);
+    while (semSemvalue != 0 || chassisSemvalue != 0) {
         sem_wait(&chassisSem);
         while (car->next != NULL) {
             if (pthread_mutex_trylock(&car->mutex) == 0) {
                 if (car->seats == 0 && car->chassis == 1) {
                     car->seats = 1;
-                    if(car->engines == 1 && car->tires == 1) {
+                    if (car->engines == 1 && car->tires == 1) {
                         sem_post(&topCoverSem);
+                    } else {
+                        sem_post(&chassisSem);
                     }
                     fprintf(stderr, "seat added to car: %d, added by thread: %lu\n", car->id, pthread_self());
+                    pthread_mutex_unlock(&car->mutex);
+                    break;
                 }
                 pthread_mutex_unlock(&car->mutex);
             }
             car = car->next;
         }
-        car = head;
-        sem_post(&chassisSem);
+        car = head->next;
+        sem_getvalue(&sem, &semSemvalue);
+        sem_getvalue(&chassisSem, &chassisSemvalue);
     }
 
     pthread_exit(NULL);
@@ -284,27 +295,34 @@ void cTypeAction(Car *car) {
 // adds engine
 void dTypeAction(Car *car) {
     pthread_barrier_wait(&barrier);
-    while(1) {
-        sem_wait(&chassisSem);
-        while(car->next != NULL) {
-            if(pthread_mutex_trylock(&car->mutex) == 0) {
-                if(car->engines == 0 && car->chassis == 1) {
-                    car->engines = 1;
-                    fprintf(stderr, "engine added to car: %d, added by thread: %lu\n", car->id, pthread_self());
-                    if(car->tires == 1 && car->seats == 1) {
-                        sem_post(&topCoverSem);
-                        // fprintf(stderr,"top cover can be added to car: %d\n", car->id);
+    int semSemvalue, chassisSemvalue;
+    sem_getvalue(&sem, &semSemvalue);
+    sem_getvalue(&chassisSem, &chassisSemvalue);
+    while (semSemvalue != 0 || chassisSemvalue != 0) {
+        if (sem_trywait(&chassisSem) == 0) {
+            while (car->next != NULL) {
+                if (pthread_mutex_trylock(&car->mutex) == 0) {
+                    if (car->engines == 0 && car->chassis == 1) {
+                        car->engines = 1;
+                        fprintf(stderr, "engine added to car: %d, added by thread: %lu\n", car->id, pthread_self());
+                        if (car->tires == 1 && car->seats == 1) {
+                            sem_post(&topCoverSem);
+                            // fprintf(stderr,"top cover can be added to car: %d\n", car->id);
+                        } else {
+                            sem_post(&chassisSem);
+                        }
+                        pthread_mutex_unlock(&car->mutex);
+                        break;
                     }
+                    pthread_mutex_unlock(&car->mutex);
                 }
-                pthread_mutex_unlock(&car->mutex);
+                car = car->next;
             }
-            car = car->next;
+            car = head->next;
         }
-        car = head->next;
-        sem_post(&chassisSem);
 
-        if(sem_trywait(&topCoverSem) == 0) {
-            while(car->next != NULL) {
+        if (sem_trywait(&topCoverSem) == 0) {
+            while (car->next != NULL) {
                 if (pthread_mutex_trylock(&car->mutex) == 0) {
                     if (car->chassis == 1 && car->seats == 1 && car->tires == 1 && car->engines == 1 && car->tops == 0) {
                         car->tops = 1;
@@ -314,9 +332,12 @@ void dTypeAction(Car *car) {
                 }
                 car = car->next;
             }
-            car = head;
+            car = head->next;
             sem_post(&paintSem);
         }
+        sleep(1);
+        sem_getvalue(&sem, &semSemvalue);
+        sem_getvalue(&chassisSem, &chassisSemvalue);
     }
     pthread_exit(NULL);
 }
