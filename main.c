@@ -28,12 +28,16 @@ void aTypeAction(Car *car);
 void bTypeAction(Car *car);
 void cTypeAction(Car *car);
 void dTypeAction(Car *car);
-void addNewCarWithChassis(Car *car);
+void addNewCarWithChassis(Car *car, int currentday);
 void setChassis(Car *car);
+int day = 1;
+int numberOfDays = 0;
 sem_t sem, chassisSem, topCoverSem, paintSem;
 pthread_mutex_t logMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t carMutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_barrier_t barrier;
+pthread_mutex_t dayMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_barrier_t barrier, daybarrier;
+pthread_cond_t daycond = PTHREAD_COND_INITIALIZER;
 
 Car *head = NULL;
 FILE *input_file;
@@ -45,7 +49,7 @@ int main(int argc, char *argv[]) {
     output_file = fopen("output.txt", "w");
 
     // Read the first line of the input file
-    int aTypeNum, bTypeNum, cTypeNum, dTypeNum, numberOfDays = 0;
+    int aTypeNum, bTypeNum, cTypeNum, dTypeNum = 0;
 
     fscanf(input_file, "%d %d %d %d %d", &aTypeNum, &bTypeNum, &cTypeNum, &dTypeNum, &numberOfDays);
 
@@ -69,6 +73,7 @@ int main(int argc, char *argv[]) {
     pthread_t dType[dTypeNum];
 
     pthread_barrier_init(&barrier, NULL, aTypeNum + bTypeNum + cTypeNum + dTypeNum);
+    pthread_barrier_init(&daybarrier, NULL, aTypeNum + bTypeNum + cTypeNum + dTypeNum + 1);
 
     for (int i = 0; i < aTypeNum; i++) {
         pthread_create(&aType[i], NULL, (void *)aTypeAction, (void *)head);
@@ -84,6 +89,15 @@ int main(int argc, char *argv[]) {
 
     for (int i = 0; i < dTypeNum; i++) {
         pthread_create(&dType[i], NULL, (void *)dTypeAction, (void *)head);
+    }
+
+    while (day < numberOfDays) {
+        pthread_barrier_wait(&daybarrier);
+        pthread_mutex_lock(&dayMutex);
+        sem_init(&sem, 0, maxNumOfCarsCanProduced);
+        day++;
+        pthread_cond_broadcast(&daycond);
+        pthread_mutex_unlock(&dayMutex);
     }
 
     for (int i = 0; i < aTypeNum; i++) {
@@ -131,7 +145,7 @@ void initializeCar(Car *car, int id) {
 }
 
 // add and initialize new node to the end of car linked list
-void addNewCarWithChassis(Car *car) {
+void addNewCarWithChassis(Car *car, int currentday) {
     while (car->next != NULL) {
         car = car->next;
     }
@@ -139,7 +153,7 @@ void addNewCarWithChassis(Car *car) {
     initializeCar(car->next, car->id + 1);
     setChassis(car->next);
     pthread_mutex_lock(&logMutex);
-    fprintf(output_file, "Type B - %lu\t%d\tchassis\t%d\n", pthread_self(), car->next->id,1);
+    fprintf(output_file, "Type B - %lu\t%d\tchassis\t%d\n", pthread_self(), car->next->id, currentday);
     pthread_mutex_unlock(&logMutex);
 }
 
@@ -152,18 +166,20 @@ void setChassis(Car *car) {
 
 // adds tires and painting
 void aTypeAction(Car *car) {
-    pthread_barrier_wait(&barrier);
-    int semSemvalue, chassisSemvalue;
-    sem_getvalue(&sem, &semSemvalue);
-    sem_getvalue(&chassisSem, &chassisSemvalue);
-    while (semSemvalue != 0 || chassisSemvalue != 0) {
-        sem_wait(&chassisSem);
+    do {
+        int currentDay = day;
+        pthread_barrier_wait(&barrier);
+        int semSemvalue, chassisSemvalue;
+        sem_getvalue(&sem, &semSemvalue);
+        sem_getvalue(&chassisSem, &chassisSemvalue);
+        while (semSemvalue != 0 || chassisSemvalue != 0) {
+            sem_wait(&chassisSem);
             while (car->next != NULL) {
                 if (pthread_mutex_trylock(&car->mutex) == 0) {
                     if (car->tires == 0 && car->chassis == 1) {
                         car->tires = 1;
                         pthread_mutex_lock(&logMutex);
-                        fprintf(output_file, "Type A - %lu\t%d\ttires\t%d\n", pthread_self(), car->id, 1);
+                        fprintf(output_file, "Type A - %lu\t%d\ttires\t%d\n", pthread_self(), car->id, currentDay);
                         pthread_mutex_unlock(&logMutex);
                         if (car->engines == 1 && car->seats == 1) {
                             sem_post(&topCoverSem);
@@ -179,88 +195,133 @@ void aTypeAction(Car *car) {
             }
             car = head->next;
 
-        if (sem_trywait(&paintSem) == 0) {
+            if (sem_trywait(&paintSem) == 0) {
+                while (car->next != NULL) {
+                    if (pthread_mutex_trylock(&car->mutex) == 0) {
+                        if (car->chassis == 1 && car->engines == 1 & car->tires == 1 && car->seats == 1 && car->tops == 1 &&
+                            car->painting == 0) {
+                            car->painting = 1;
+                            pthread_mutex_lock(&logMutex);
+                            fprintf(output_file, "Type A - %lu\t%d\tpainting\t%d\n", pthread_self(), car->id, currentDay);
+                            pthread_mutex_unlock(&logMutex);
+                        }
+                        pthread_mutex_unlock(&car->mutex);
+                    }
+                    car = car->next;
+                }
+                car = head->next;
+            }
+            sem_getvalue(&sem, &semSemvalue);
+            sem_getvalue(&chassisSem, &chassisSemvalue);
+        }
+
+        if (day == numberOfDays) {
+            break;
+        }
+        pthread_barrier_wait(&daybarrier);
+        pthread_mutex_lock(&dayMutex);
+
+        while (currentDay == day) {
+            pthread_cond_wait(&daycond, &dayMutex);
+        }
+
+        pthread_mutex_unlock(&dayMutex);
+    } while (day <= numberOfDays);
+
+    pthread_exit(NULL);
+}
+
+// adds chassis
+void bTypeAction(Car *car) {
+    do {
+        int currentDay = day;
+        pthread_barrier_wait(&barrier);
+        while (sem_trywait(&sem) == 0) {
+            pthread_mutex_lock(&carMutex);
+            addNewCarWithChassis(car, currentDay);
+            sem_post(&chassisSem);
+            pthread_mutex_unlock(&carMutex);
+        }
+
+        if (day == numberOfDays) {
+            break;
+        }
+        pthread_barrier_wait(&daybarrier);
+        pthread_mutex_lock(&dayMutex);
+
+        while (currentDay == day) {
+            pthread_cond_wait(&daycond, &dayMutex);
+        }
+
+        pthread_mutex_unlock(&dayMutex);
+    } while (day <= numberOfDays);
+    pthread_exit(NULL);
+}
+
+// adds seats
+void cTypeAction(Car *car) {
+    do {
+        int currentDay = day;
+        pthread_barrier_wait(&barrier);
+        int semSemvalue, chassisSemvalue;
+        sem_getvalue(&sem, &semSemvalue);
+        sem_getvalue(&chassisSem, &chassisSemvalue);
+        while (semSemvalue != 0 || chassisSemvalue != 0) {
+            sem_wait(&chassisSem);
             while (car->next != NULL) {
                 if (pthread_mutex_trylock(&car->mutex) == 0) {
-                    if (car->chassis == 1 && car->engines == 1 & car->tires == 1 && car->seats == 1 && car->tops == 1 &&
-                        car->painting == 0) {
-                        car->painting = 1;
+                    if (car->seats == 0 && car->chassis == 1) {
+                        car->seats = 1;
+                        if (car->engines == 1 && car->tires == 1) {
+                            sem_post(&topCoverSem);
+                        } else {
+                            sem_post(&chassisSem);
+                        }
                         pthread_mutex_lock(&logMutex);
-                        fprintf(output_file, "Type A - %lu\t%d\tpainting\t%d\n", pthread_self(), car->id, 1);
+                        fprintf(output_file, "Type C - %lu\t%d\tseats\t%d\n", pthread_self(), car->id, currentDay);
                         pthread_mutex_unlock(&logMutex);
+                        pthread_mutex_unlock(&car->mutex);
+                        break;
                     }
                     pthread_mutex_unlock(&car->mutex);
                 }
                 car = car->next;
             }
             car = head->next;
+            sem_getvalue(&sem, &semSemvalue);
+            sem_getvalue(&chassisSem, &chassisSemvalue);
         }
-        sem_getvalue(&sem, &semSemvalue);
-        sem_getvalue(&chassisSem, &chassisSemvalue);
-    }
-    pthread_exit(NULL);
-}
 
-// adds chassis
-void bTypeAction(Car *car) {
-    pthread_barrier_wait(&barrier);
-    while (sem_trywait(&sem) == 0) {
-        pthread_mutex_lock(&carMutex);
-        addNewCarWithChassis(car);
-        sem_post(&chassisSem);
-        pthread_mutex_unlock(&carMutex);
-    }
-    pthread_exit(NULL);
-}
-
-// adds seats
-void cTypeAction(Car *car) {
-    pthread_barrier_wait(&barrier);
-    int semSemvalue, chassisSemvalue;
-    sem_getvalue(&sem, &semSemvalue);
-    sem_getvalue(&chassisSem, &chassisSemvalue);
-    while (semSemvalue != 0 || chassisSemvalue != 0) {
-        sem_wait(&chassisSem);
-        while (car->next != NULL) {
-            if (pthread_mutex_trylock(&car->mutex) == 0) {
-                if (car->seats == 0 && car->chassis == 1) {
-                    car->seats = 1;
-                    if (car->engines == 1 && car->tires == 1) {
-                        sem_post(&topCoverSem);
-                    } else {
-                        sem_post(&chassisSem);
-                    }
-                    pthread_mutex_lock(&logMutex);
-                    fprintf(output_file, "Type C - %lu\t%d\tseats\t%d\n", pthread_self(), car->id, 1);
-                    pthread_mutex_unlock(&logMutex);
-                    pthread_mutex_unlock(&car->mutex);
-                    break;
-                }
-                pthread_mutex_unlock(&car->mutex);
-            }
-            car = car->next;
+        if (day == numberOfDays) {
+            break;
         }
-        car = head->next;
-        sem_getvalue(&sem, &semSemvalue);
-        sem_getvalue(&chassisSem, &chassisSemvalue);
-    }
+        pthread_barrier_wait(&daybarrier);
+        pthread_mutex_lock(&dayMutex);
 
+        while (currentDay == day) {
+            pthread_cond_wait(&daycond, &dayMutex);
+        }
+
+        pthread_mutex_unlock(&dayMutex);
+    } while (day <= numberOfDays);
     pthread_exit(NULL);
 }
 // adds engine
 void dTypeAction(Car *car) {
-    pthread_barrier_wait(&barrier);
-    int semSemvalue, chassisSemvalue;
-    sem_getvalue(&sem, &semSemvalue);
-    sem_getvalue(&chassisSem, &chassisSemvalue);
-    while (semSemvalue != 0 || chassisSemvalue != 0) {
-        sem_wait(&chassisSem);
+    do {
+        int currentDay = day;
+        pthread_barrier_wait(&barrier);
+        int semSemvalue, chassisSemvalue;
+        sem_getvalue(&sem, &semSemvalue);
+        sem_getvalue(&chassisSem, &chassisSemvalue);
+        while (semSemvalue != 0 || chassisSemvalue != 0) {
+            sem_wait(&chassisSem);
             while (car->next != NULL) {
                 if (pthread_mutex_trylock(&car->mutex) == 0) {
                     if (car->engines == 0 && car->chassis == 1) {
                         car->engines = 1;
                         pthread_mutex_lock(&logMutex);
-                        fprintf(output_file, "Type D - %lu\t%d\tengines\t%d\n", pthread_self(), car->id, 1);
+                        fprintf(output_file, "Type D - %lu\t%d\tengines\t%d\n", pthread_self(), car->id, currentDay);
                         pthread_mutex_unlock(&logMutex);
                         if (car->tires == 1 && car->seats == 1) {
                             sem_post(&topCoverSem);
@@ -276,24 +337,37 @@ void dTypeAction(Car *car) {
             }
             car = head->next;
 
-        if (sem_trywait(&topCoverSem) == 0) {
-            while (car->next != NULL) {
-                if (pthread_mutex_trylock(&car->mutex) == 0) {
-                    if (car->chassis == 1 && car->seats == 1 && car->tires == 1 && car->engines == 1 && car->tops == 0) {
-                        car->tops = 1;
-                        pthread_mutex_lock(&logMutex);
-                        fprintf(output_file, "Type D - %lu\t%d\ttops\t%d\n", pthread_self(), car->id, 1);
-                        pthread_mutex_unlock(&logMutex);
+            if (sem_trywait(&topCoverSem) == 0) {
+                while (car->next != NULL) {
+                    if (pthread_mutex_trylock(&car->mutex) == 0) {
+                        if (car->chassis == 1 && car->seats == 1 && car->tires == 1 && car->engines == 1 && car->tops == 0) {
+                            car->tops = 1;
+                            pthread_mutex_lock(&logMutex);
+                            fprintf(output_file, "Type D - %lu\t%d\ttops\t%d\n", pthread_self(), car->id, currentDay);
+                            pthread_mutex_unlock(&logMutex);
+                        }
+                        pthread_mutex_unlock(&car->mutex);
                     }
-                    pthread_mutex_unlock(&car->mutex);
+                    car = car->next;
                 }
-                car = car->next;
+                car = head->next;
+                sem_post(&paintSem);
             }
-            car = head->next;
-            sem_post(&paintSem);
+            sem_getvalue(&sem, &semSemvalue);
+            sem_getvalue(&chassisSem, &chassisSemvalue);
         }
-        sem_getvalue(&sem, &semSemvalue);
-        sem_getvalue(&chassisSem, &chassisSemvalue);
-    }
+
+        if (day == numberOfDays) {
+            break;
+        }
+        pthread_barrier_wait(&daybarrier);
+        pthread_mutex_lock(&dayMutex);
+
+        while (currentDay == day) {
+            pthread_cond_wait(&daycond, &dayMutex);
+        }
+
+        pthread_mutex_unlock(&dayMutex);
+    } while (day <= numberOfDays);
     pthread_exit(NULL);
 }
